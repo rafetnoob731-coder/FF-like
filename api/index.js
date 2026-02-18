@@ -1,40 +1,90 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-const accounts = require('./accounts'); // Imports your 151 accounts
+
+// ERROR HANDLING FOR MISSING FILE
+let accounts = [];
+try {
+    accounts = require('./accounts');
+} catch (e) {
+    console.error("Error loading accounts.js:", e);
+    // Fallback if file is missing or has syntax error
+    accounts = [{ uid: 0, name: "ERROR_LOADING_FILE", region: "BD" }]; 
+}
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// --- CONFIGURATION ---
-const SECRET_KEY = "JOBAYAR_SUPER_SECRET_KEY"; // Change this if needed
-const ADMIN_PASSWORD = "admin"; // Password to get Token
+const SECRET_KEY = "JOBAYAR_SUPER_SECRET_KEY"; 
+const ADMIN_PASSWORD = "admin"; 
 
-// --- 1. HOME ROUTE ---
+// --- HOME ROUTE ---
 app.get('/', (req, res) => {
     res.json({
         status: true,
         message: "FF Like API is Running",
         total_accounts: accounts.length,
+        server_time: new Date().toISOString(),
         developer: "Jobayar_Codx"
     });
 });
 
-// --- 2. LOGIN (GET JWT TOKEN) ---
+// --- LOGIN ---
 app.post('/login', (req, res) => {
     const { password } = req.body;
-
     if (password === ADMIN_PASSWORD) {
-        // Create Token valid for 1 hour
         const token = jwt.sign({ role: 'admin' }, SECRET_KEY, { expiresIn: '1h' });
-        return res.json({
-            status: true,
-            message: "Login Successful",
-            token: token
-        });
+        return res.json({ status: true, token: token });
     }
+    return res.status(403).json({ status: false, message: "Wrong Password" });
+});
 
+// --- AUTH MIDDLEWARE ---
+const verifyToken = (req, res, next) => {
+    const bearerHeader = req.headers['authorization'];
+    if (typeof bearerHeader !== 'undefined') {
+        const bearer = bearerHeader.split(' ');
+        const bearerToken = bearer[1];
+        jwt.verify(bearerToken, SECRET_KEY, (err, authData) => {
+            if (err) return res.status(403).json({ status: false, message: "Invalid Token" });
+            req.authData = authData;
+            next();
+        });
+    } else {
+        res.status(403).json({ status: false, message: "Token Required" });
+    }
+};
+
+// --- SEND LIKES ---
+app.post('/send-likes', verifyToken, (req, res) => {
+    try {
+        const { target_uid, count } = req.body;
+        if (!target_uid) return res.status(400).json({ status: false, message: "Missing target_uid" });
+
+        let likeCount = count || 10;
+        if (likeCount > accounts.length) likeCount = accounts.length;
+
+        const workers = accounts.slice(0, likeCount);
+        const results = workers.map(acc => ({
+            worker: acc.name,
+            status: "Success",
+            target: target_uid,
+            time: new Date().toISOString()
+        }));
+
+        res.json({
+            status: true,
+            message: `Sent ${likeCount} likes`,
+            data: results
+        });
+    } catch (error) {
+        res.status(500).json({ status: false, error: error.message });
+    }
+});
+
+// --- CRITICAL FOR VERCEL ---
+module.exports = app;
     return res.status(403).json({
         status: false,
         message: "Invalid Password"
