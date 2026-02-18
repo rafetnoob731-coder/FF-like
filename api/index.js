@@ -2,39 +2,117 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 
-// ERROR HANDLING FOR MISSING FILE
-let accounts = [];
-try {
-    accounts = require('./accounts');
-} catch (e) {
-    console.error("Error loading accounts.js:", e);
-    // Fallback if file is missing or has syntax error
-    accounts = [{ uid: 0, name: "ERROR_LOADING_FILE", region: "BD" }]; 
-}
-
+// Initialize App
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-const SECRET_KEY = "JOBAYAR_SUPER_SECRET_KEY"; 
-const ADMIN_PASSWORD = "admin"; 
+// --- 1. LOAD ACCOUNTS SAFELY ---
+let accounts = [];
+try {
+    accounts = require('./accounts');
+} catch (e) {
+    console.error("Could not load accounts.js", e);
+    // If file is missing, use empty array to prevent crash
+    accounts = [];
+}
 
-// --- HOME ROUTE ---
+// --- CONFIG ---
+const SECRET_KEY = "JOBAYAR_SUPER_SECRET_KEY";
+const ADMIN_PASSWORD = "admin";
+
+// --- 2. HOME ROUTE ---
 app.get('/', (req, res) => {
     res.json({
         status: true,
         message: "FF Like API is Running",
         total_accounts: accounts.length,
-        server_time: new Date().toISOString(),
         developer: "Jobayar_Codx"
     });
 });
 
-// --- LOGIN ---
+// --- 3. LOGIN ROUTE ---
 app.post('/login', (req, res) => {
     const { password } = req.body;
+
     if (password === ADMIN_PASSWORD) {
+        // Generate Token
         const token = jwt.sign({ role: 'admin' }, SECRET_KEY, { expiresIn: '1h' });
+        return res.json({
+            status: true,
+            message: "Login Successful",
+            token: token
+        });
+    }
+
+    return res.status(403).json({
+        status: false,
+        message: "Invalid Password"
+    });
+});
+
+// --- 4. MIDDLEWARE (Verify Token) ---
+function verifyToken(req, res, next) {
+    const bearerHeader = req.headers['authorization'];
+
+    if (typeof bearerHeader !== 'undefined') {
+        const bearer = bearerHeader.split(' ');
+        const bearerToken = bearer[1];
+
+        jwt.verify(bearerToken, SECRET_KEY, (err, authData) => {
+            if (err) {
+                return res.status(403).json({ status: false, message: "Invalid Token" });
+            }
+            req.authData = authData;
+            next();
+        });
+    } else {
+        res.status(403).json({ status: false, message: "Token Required" });
+    }
+}
+
+// --- 5. SEND LIKES ROUTE ---
+app.post('/send-likes', verifyToken, (req, res) => {
+    try {
+        const { target_uid, count } = req.body;
+
+        if (!target_uid) {
+            return res.status(400).json({ status: false, message: "Missing target_uid" });
+        }
+
+        // Calculate limits
+        let likeCount = count || 10;
+        if (likeCount > accounts.length) {
+            likeCount = accounts.length;
+        }
+
+        // Select workers
+        const workers = accounts.slice(0, likeCount);
+
+        // Process results
+        const results = workers.map(acc => {
+            return {
+                worker_name: acc.name,
+                status: "Success",
+                target: target_uid,
+                timestamp: new Date().toISOString()
+            };
+        });
+
+        res.json({
+            status: true,
+            code: 200,
+            message: `Sent ${likeCount} likes to ${target_uid}`,
+            data: results
+        });
+
+    } catch (error) {
+        res.status(500).json({ status: false, error: error.message });
+    }
+});
+
+// --- 6. EXPORT APP (Critical for Vercel) ---
+module.exports = app;        const token = jwt.sign({ role: 'admin' }, SECRET_KEY, { expiresIn: '1h' });
         return res.json({ status: true, token: token });
     }
     return res.status(403).json({ status: false, message: "Wrong Password" });
