@@ -6,35 +6,110 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// --- 1. Load Accounts ---
+// --- 1. SAFE ACCOUNT LOADING ---
 let accounts = [];
 try {
+    // Try to load accounts, if fails, use empty array
     accounts = require('./accounts');
-} catch (e) {
-    accounts = []; // Fallback if file is missing
+} catch (error) {
+    console.log("Error loading accounts:", error.message);
+    accounts = []; 
 }
 
+// --- 2. CONFIG ---
 const SECRET_KEY = "JOBAYAR_SUPER_SECRET_KEY"; 
 
-// --- 2. Middleware for Login Check ---
+// --- 3. HELPER: VERIFY TOKEN ---
 const verifyToken = (req, res, next) => {
     const bearerHeader = req.headers['authorization'];
+    
     if (typeof bearerHeader !== 'undefined') {
         const bearer = bearerHeader.split(' ');
         const bearerToken = bearer[1];
+        
         jwt.verify(bearerToken, SECRET_KEY, (err, authData) => {
             if (err) {
-                return res.status(403).json({ status: false, message: "Invalid Token" });
+                return res.status(403).json({ 
+                    status: false, 
+                    message: "Invalid or Expired Token" 
+                });
             }
             req.authData = authData;
             next();
         });
     } else {
-        res.status(403).json({ status: false, message: "Token Required" });
+        res.status(403).json({ 
+            status: false, 
+            message: "Token Required (Bearer)" 
+        });
     }
 };
 
-// --- 3. Home Route ---
+// --- 4. ROUTES ---
+
+// Route: Home (Check if running)
+app.get('/', (req, res) => {
+    res.json({
+        status: true,
+        message: "FF Like API is Online",
+        loaded_accounts: accounts.length,
+        developer: "Jobayar_Codx"
+    });
+});
+
+// Route: Login (Get Token)
+app.post('/login', (req, res) => {
+    const { password } = req.body;
+    
+    // Simple password check
+    if (password === "admin") {
+        const token = jwt.sign({ role: 'admin' }, SECRET_KEY, { expiresIn: '1h' });
+        return res.json({
+            status: true,
+            message: "Login Success",
+            token: token
+        });
+    }
+    
+    return res.status(403).json({
+        status: false,
+        message: "Wrong Password"
+    });
+});
+
+// Route: Send Likes (Protected)
+app.post('/send-likes', verifyToken, (req, res) => {
+    const { target_uid, count } = req.body;
+
+    if (!target_uid) {
+        return res.status(400).json({ status: false, message: "Target UID is required" });
+    }
+
+    // Limit likes to max available accounts
+    let likeCount = count || 10;
+    if (likeCount > accounts.length) likeCount = accounts.length;
+
+    // Get the workers
+    const workers = accounts.slice(0, likeCount);
+
+    // Create response data
+    const results = workers.map(acc => ({
+        worker_uid: acc.uid,
+        worker_name: acc.name,
+        target: target_uid,
+        status: "Success",
+        time: new Date().toISOString()
+    }));
+
+    res.json({
+        status: true,
+        message: `Process Started: Sending ${likeCount} likes to ${target_uid}`,
+        data: results
+    });
+});
+
+// --- 5. EXPORT APP ---
+module.exports = app;// --- 3. Home Route ---
 app.get('/', (req, res) => {
     res.json({
         status: true,
