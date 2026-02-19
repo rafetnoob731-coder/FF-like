@@ -6,9 +6,9 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// ==================================================
-// 1. FULL ACCOUNT LIST (151 ACCOUNTS PRE-LOADED)
-// ==================================================
+// ==========================================
+// 1. FULL ACCOUNT LIST (151 ACCOUNTS)
+// ==========================================
 const accounts = [
   { "uid": 4438032871, "password": "JOBAYAR_CODX-QYNCJW5EW", "account_id": 1, "name": "GHOST_HJZDSH", "region": "BD" },
   { "uid": 4438038683, "password": "JOBAYAR_CODX-B1BR5QI4J", "account_id": 1, "name": "GHOST_V2IVAG", "region": "BD" },
